@@ -24,13 +24,11 @@
             margin: 0;
             padding: 0;
             color: var(--text);
-            /* Use the generated background image if available, else gradient */
             background: url('{{ asset("images/bg.png") }}') no-repeat center center fixed;
             background-size: cover;
             min-height: 100vh;
         }
 
-        /* Overlay to ensure readability if BG is too busy */
         body::before {
             content: '';
             position: fixed;
@@ -47,6 +45,8 @@
             background: rgba(255, 255, 255, 0.8);
             backdrop-filter: blur(10px);
             box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            position: relative;
+            z-index: 10;
         }
 
         .logo {
@@ -113,6 +113,8 @@
             max-width: 450px;
             margin-top: 20px;
             border: 1px solid rgba(255,255,255,0.8);
+            position: relative;
+            z-index: 5;
         }
 
         .form-group {
@@ -156,34 +158,162 @@
             box-shadow: 0 5px 15px rgba(255, 128, 171, 0.4);
         }
 
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(255, 128, 171, 0.6);
+        .btn-primary:active {
+            transform: scale(0.98);
         }
 
-        .alert {
-            padding: 15px;
-            border-radius: 10px;
-            margin-bottom: 20px;
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        /* Loading Overlay */
+        #loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(8px);
+            z-index: 1000;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
             text-align: center;
         }
 
-        .alert-success {
-            background: #e8f5e9;
-            color: #2e7d32;
+        .loading-mascot {
+            width: 150px;
+            margin-bottom: 20px;
+            animation: bounce 1s infinite alternate;
         }
 
-        .alert-error {
-            background: #ffebee;
-            color: #c62828;
+        @keyframes bounce {
+            from { transform: translateY(0); }
+            to { transform: translateY(-20px); }
+        }
+
+        .loading-text {
+            font-size: 1.5rem;
+            color: #FF9AA2;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .loading-dots::after {
+            content: '.';
+            animation: dots 1.5s steps(5, end) infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60% { content: '...'; }
+            80%, 100% { content: ''; }
+        }
+
+        /* Success Modal */
+        #success-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        #success-modal.active {
+            display: flex;
+            opacity: 1;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 40px;
+            border-radius: 30px;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+            transform: scale(0.7);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+            position: relative;
+            overflow: hidden;
+        }
+
+        #success-modal.active .modal-content {
+            transform: scale(1);
+        }
+
+        .modal-mascot {
+            width: 100px;
+            margin-bottom: 15px;
+        }
+
+        .modal-title {
+            font-size: 2rem;
+            color: #B5EAD7;
+            color: #4db6ac;
+            margin: 0;
+            margin-bottom: 10px;
+        }
+
+        .modal-body {
+            font-size: 1.1rem;
+            color: #666;
+            margin-bottom: 25px;
+        }
+
+        .btn-modal {
+            background: var(--primary);
+            color: white;
+            padding: 10px 30px;
+            border-radius: 20px;
+            text-decoration: none;
+            font-weight: bold;
+            display: inline-block;
+            cursor: pointer;
+            border: none;
+        }
+
+        /* Confetti decoration */
+        .confetti-piece {
+            position: absolute;
+            width: 10px; height: 10px;
+            background: #ffd54f;
+            top: -10px;
+            opacity: 0;
         }
 
     </style>
 </head>
 <body>
 
+    <!-- Loading Overlay -->
+    <div id="loading-overlay">
+        <img src="{{ asset('images/mascot.png') }}" alt="Processing..." class="loading-mascot">
+        <div class="loading-text">Sending Certificates<span class="loading-dots"></span></div>
+        <p style="color: #999; margin-top: 10px;">Please wait while we split and email your files.</p>
+    </div>
+
+    <!-- Success Modal -->
+    <div id="success-modal">
+        <div class="modal-content">
+            <img src="{{ asset('images/mascot.png') }}" alt="Success!" class="modal-mascot">
+            <h2 class="modal-title">Yay! Done!</h2>
+            <div class="modal-body" id="success-message">
+                Successfully processed 0 certificates!
+            </div>
+            <button class="btn-modal" onclick="closeModal()">Awesome!</button>
+        </div>
+    </div>
+
     <nav class="navbar">
-        <!-- Logo -->
         <img src="{{ asset('images/logo.png') }}" alt="Logo" class="logo">
         <div style="font-weight: bold; color: #aaa;">AUTOMATIC MAILER</div>
     </nav>
@@ -195,41 +325,17 @@
             <p>Upload your recipient list and your bulk certificate PDF. We'll split the pages and email each certificate to the right person automatically.</p>
             
             <div class="card">
-                @if(session('success'))
-                    <div class="alert alert-success">
-                        {{ session('success') }}
-                    </div>
-                @endif
-
-                @if(session('error'))
-                    <div class="alert alert-error">
-                        {{ session('error') }}
-                    </div>
-                @endif
-                
-                @if ($errors->any())
-                    <div class="alert alert-error">
-                        <ul style="list-style: none; padding: 0; margin: 0;">
-                            @foreach ($errors->all() as $error)
-                                <li>{{ $error }}</li>
-                            @endforeach
-                        </ul>
-                    </div>
-                @endif
-
-                <form action="{{ route('send.certificates') }}" method="POST" enctype="multipart/form-data">
+                <form id="certificate-form" action="{{ route('send.certificates') }}" method="POST" enctype="multipart/form-data">
                     @csrf
                     
                     <div class="form-group">
                         <label>1. Upload List (Excel)</label>
                         <input type="file" name="excel_file" class="file-upload" accept=".xlsx,.xls,.csv" required style="width: 100%; box-sizing: border-box;">
-                        <small style="color: #999;">Columns: Name, Email</small>
                     </div>
 
                     <div class="form-group">
                         <label>2. Upload Certificates (PDF)</label>
                         <input type="file" name="pdf_file" class="file-upload" accept=".pdf" required style="width: 100%; box-sizing: border-box;">
-                        <small style="color: #999;">Single PDF with all certificates</small>
                     </div>
 
                     <button type="submit" class="btn-primary">Process & Send</button>
@@ -243,5 +349,53 @@
 
     </div>
 
+    <!-- Script for AJAX -->
+    <script>
+        const form = document.getElementById('certificate-form');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const successModal = document.getElementById('success-modal');
+        const successMessage = document.getElementById('success-message');
+
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            // Show Loading
+            loadingOverlay.style.display = 'flex';
+
+            const formData = new FormData(form);
+
+            fetch(form.action, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest', // Important for Laravel to detect wantsJson
+                    'Accept': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                loadingOverlay.style.display = 'none';
+                
+                if (data.success) {
+                    successMessage.innerHTML = `Successfully sent <b>${data.count}</b> certificates!<br>All emails have been delivered.`;
+                    successModal.classList.add('active');
+                } else {
+                     // Handle error (maybe just alert? For now let's assume simple alert for error)
+                     alert('Error: ' + (data.message || 'Something went wrong.'));
+                }
+            })
+            .catch(error => {
+                loadingOverlay.style.display = 'none';
+                alert('An unexpected error occurred. Please try again.');
+                console.error(error);
+            });
+        });
+
+        function closeModal() {
+            successModal.classList.remove('active');
+            // user might want to reset form?
+            form.reset();
+        }
+    </script>
 </body>
 </html>

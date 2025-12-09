@@ -110,6 +110,14 @@ class CertificateController extends Controller
             // unlink($outputPath); 
         }
 
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => "Successfully processed and sent $sentCount certificates!",
+                'count' => $sentCount
+            ]);
+        }
+
         return back()->with('success', "Successfully processed and sent $sentCount certificates!");
     }
 }
