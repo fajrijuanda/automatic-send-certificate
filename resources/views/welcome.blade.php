@@ -50,7 +50,7 @@
         }
 
         .logo {
-            height: 50px;
+            height: 120px;
         }
 
         .container {
