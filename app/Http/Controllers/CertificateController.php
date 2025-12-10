@@ -59,7 +59,11 @@ class CertificateController extends Controller
         }
 
         if (empty($recipients)) {
-            return back()->with('error', 'No valid emails found in Excel.');
+            $message = 'No valid emails found in Excel.';
+            if ($request->wantsJson()) {
+                return response()->json(['success' => false, 'message' => $message], 422);
+            }
+            return back()->with('error', $message);
         }
 
         // 2. Process PDF
@@ -70,7 +74,11 @@ class CertificateController extends Controller
         $pageCount = $pdf->setSourceFile($pdfPath);
 
         if ($pageCount < count($recipients)) {
-            return back()->with('error', "PDF has $pageCount pages but Excel has " . count($recipients) . " recipients. Numbers must match (or PDF must have enough pages).");
+            $message = "PDF has $pageCount pages but Excel has " . count($recipients) . " recipients. Numbers must match (or PDF must have enough pages).";
+            if ($request->wantsJson()) {
+                return response()->json(['success' => false, 'message' => $message], 422);
+            }
+            return back()->with('error', $message);
         }
 
         $sentCount = 0;

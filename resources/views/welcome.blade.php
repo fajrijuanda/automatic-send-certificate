@@ -280,6 +280,20 @@
             display: inline-block;
             cursor: pointer;
             border: none;
+            transition: transform 0.2s;
+        }
+
+        .btn-modal:active {
+            transform: scale(0.95);
+        }
+
+        /* Error Modal Specifics */
+        #error-modal .modal-title {
+            color: #FF6F61;
+        }
+        
+        #error-modal .btn-modal {
+            background: #FF6F61;
         }
 
         /* Confetti decoration */
@@ -310,7 +324,21 @@
             <div class="modal-body" id="success-message">
                 Successfully processed 0 certificates!
             </div>
-            <button class="btn-modal" onclick="closeModal()">Awesome!</button>
+            <button class="btn-modal" onclick="closeModal('success-modal')">Awesome!</button>
+        </div>
+    </div>
+
+    <!-- Error Modal -->
+    <div id="success-modal" class="error-modal-clone" style="display:none;"></div> <!-- Placeholder to facilitate ID change via JS if needed, but better to just duplicate structure -->
+    
+    <div id="error-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 2000; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s;">
+        <div class="modal-content">
+            <img src="{{ asset('images/mascot.png') }}" alt="Error!" class="modal-mascot" style="filter: hue-rotate(150deg);">
+            <h2 class="modal-title">Oops!</h2>
+            <div class="modal-body" id="error-message">
+                Something went wrong.
+            </div>
+            <button class="btn-modal" onclick="closeModal('error-modal')">Try Again</button>
         </div>
     </div>
 
@@ -355,7 +383,19 @@
         const form = document.getElementById('certificate-form');
         const loadingOverlay = document.getElementById('loading-overlay');
         const successModal = document.getElementById('success-modal');
+        const errorModal = document.getElementById('error-modal');
         const successMessage = document.getElementById('success-message');
+        const errorMessage = document.getElementById('error-message');
+
+        // Helper to show modal
+        function showModal(modalId) {
+             const modal = document.getElementById(modalId);
+             modal.style.display = 'flex';
+             // Trigger reflow
+             modal.offsetHeight; 
+             modal.style.opacity = '1';
+             modal.classList.add('active'); // incase we use class based
+        }
 
         form.addEventListener('submit', function(e) {
             e.preventDefault();
@@ -373,29 +413,39 @@
                     'Accept': 'application/json'
                 }
             })
-            .then(response => response.json())
-            .then(data => {
+            .then(response => response.json().then(data => ({ status: response.status, body: data })))
+            .then(result => {
                 loadingOverlay.style.display = 'none';
+                const data = result.body;
                 
-                if (data.success) {
+                if (result.status >= 200 && result.status < 300 && data.success) {
                     successMessage.innerHTML = `Successfully sent <b>${data.count}</b> certificates!<br>All emails have been delivered.`;
-                    successModal.classList.add('active');
+                    showModal('success-modal');
                 } else {
-                     // Handle error (maybe just alert? For now let's assume simple alert for error)
-                     alert('Error: ' + (data.message || 'Something went wrong.'));
+                     // Handle error
+                     errorMessage.innerHTML = data.message || 'Something went wrong. Please check your files and try again.';
+                     showModal('error-modal');
                 }
             })
             .catch(error => {
                 loadingOverlay.style.display = 'none';
-                alert('An unexpected error occurred. Please try again.');
+                errorMessage.innerHTML = 'An unexpected connection error occurred. Please clear your cache and try again.';
+                showModal('error-modal');
                 console.error(error);
             });
         });
 
-        function closeModal() {
-            successModal.classList.remove('active');
-            // user might want to reset form?
-            form.reset();
+        function closeModal(modalId) {
+            const modal = document.getElementById(modalId);
+            modal.style.opacity = '0';
+            setTimeout(() => {
+                modal.style.display = 'none';
+                modal.classList.remove('active');
+            }, 300);
+            
+            if (modalId === 'success-modal') {
+                form.reset();
+            }
         }
     </script>
 </body>
