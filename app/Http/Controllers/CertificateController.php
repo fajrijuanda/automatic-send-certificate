@@ -30,20 +30,50 @@ class CertificateController extends Controller
         // Let's assume the first row likely contains headers like 'name', 'email'.
         // To be safe, let's normalize headers to lowercase and look for 'email'.
         
-        $headers = array_map('strtolower', $data[0]);
-        $emailIndex = array_search('email', $headers);
-        $nameIndex = array_search('name', $headers) !== false ? array_search('name', $headers) : 0; // Default to col 0 if no 'name'
+        $headers = array_map(function($h) {
+            return strtolower(trim($h));
+        }, $data[0]);
+        
+        // Define possible column names
+        $nameKeywords = ['name', 'nama', 'nama lengkap', 'full name', 'fullname', 'nama peserta'];
+        $emailKeywords = ['email', 'e-mail', 'email address', 'alamat email'];
 
-        // If 'email' not found, maybe it's the second column?
+        // Find Name Index
+        $nameIndex = false;
+        foreach ($nameKeywords as $keyword) {
+            $found = array_search($keyword, $headers);
+            if ($found !== false) {
+                $nameIndex = $found;
+                break;
+            }
+        }
+
+        // Find Email Index
+        $emailIndex = false;
+        foreach ($emailKeywords as $keyword) {
+            $found = array_search($keyword, $headers);
+            if ($found !== false) {
+                $emailIndex = $found;
+                break;
+            }
+        }
+
+        // Fallback logic
         if ($emailIndex === false) {
-             // Fallback: Check if any column looks like an email? 
-             // Or just assume Col 1 = Name, Col 2 = Email.
-             // Let's assume standard: Name, Email.
+             // If headers are not found, assume usage of standard columns if appropriate, 
+             // or likely the file has no headers.
+             // Default: Name = 0, Email = 1
              $nameIndex = 0;
              $emailIndex = 1;
-             $startIndex = 0; // No header?
+             $startIndex = 0; 
         } else {
              $startIndex = 1; // Skip header
+             // If name was not found but email was, default name to 0 if 0 != emailIndex?
+             // Or maybe column before email?
+             // Let's stick to default 0 if name not found.
+             if ($nameIndex === false) {
+                 $nameIndex = 0;
+             }
         }
 
         $recipients = [];

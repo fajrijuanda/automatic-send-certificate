@@ -25,7 +25,7 @@ class CertificateSent extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Your Certificate is Here!',
+            subject: 'Sertifikat Anda Telah Tiba!',
         );
     }
 
