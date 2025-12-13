@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use setasign\Fpdi\Fpdi;
 use App\Mail\CertificateSent;
+use App\Services\PdfService;
 
 class CertificateController extends Controller
 {
@@ -16,7 +17,7 @@ class CertificateController extends Controller
         return view('welcome');
     }
 
-    public function send(Request $request)
+    public function send(Request $request, PdfService $pdfService)
     {
         $request->validate([
             'excel_file' => 'required|file|mimes:xlsx,xls,csv',
@@ -83,7 +84,9 @@ class CertificateController extends Controller
                 $recipients[] = [
                     'name' => $row[$nameIndex] ?? 'Recipient',
                     'email' => $row[$emailIndex],
-                    'page' => count($recipients) + 1 // Assign page numbers sequentially
+                    'name' => $row[$nameIndex] ?? 'Recipient',
+                    'email' => $row[$emailIndex],
+                    // Page will be assigned later
                 ];
             }
         }
@@ -99,17 +102,38 @@ class CertificateController extends Controller
         // 2. Process PDF
         $pdfPath = $request->file('pdf_file')->getPathname();
         
-        // Count pages to ensure match
-        $pdf = new Fpdi();
-        $pageCount = $pdf->setSourceFile($pdfPath);
+        // 2a. Map Names to Pages using PdfService
+        $names = array_column($recipients, 'name');
+        $mapping = $pdfService->mapNamesToPages($pdfPath, $names);
 
-        if ($pageCount < count($recipients)) {
-            $message = "PDF has $pageCount pages but Excel has " . count($recipients) . " recipients. Numbers must match (or PDF must have enough pages).";
-            if ($request->wantsJson()) {
-                return response()->json(['success' => false, 'message' => $message], 422);
+        $validRecipients = [];
+        $skippedRecipients = [];
+
+        foreach ($recipients as $recipient) {
+            $name = $recipient['name'];
+            if (isset($mapping[$name])) {
+                $recipient['page'] = $mapping[$name];
+                $validRecipients[] = $recipient;
+            } else {
+                $skippedRecipients[] = $name;
             }
-            return back()->with('error', $message);
         }
+        
+        if (empty($validRecipients)) {
+             $message = "No matching names found in PDF! Skipped: " . implode(', ', $skippedRecipients);
+             if ($request->wantsJson()) {
+                 return response()->json(['success' => false, 'message' => $message], 422);
+             }
+             return back()->with('error', $message);
+        }
+
+        // Optional: Check if page count is sufficient, though mapping ensures we have valid pages.
+        // We can skip the strict count check since we are not sequentially assigning anymore. 
+        // But we might want to warn if PDF has FEWER pages than unique matched recipients? 
+        // Logic handled by mapping.
+
+        $recipients = $validRecipients;
+
 
         $sentCount = 0;
 
@@ -124,11 +148,13 @@ class CertificateController extends Controller
             $newPdf->useTemplate($tplId);
 
             $outputName = 'cert_' . preg_replace('/[^a-z0-9]/i', '_', $recipient['name']) . '.pdf';
-            $outputPath = storage_path("app/public/temp/{$outputName}");
+            // Use system temp dir to avoid permission issues on shared hosting
+            $tempDir = sys_get_temp_dir();
+            $outputPath = $tempDir . DIRECTORY_SEPARATOR . $outputName;
             
-            // Ensure temp dir exists
+            // Ensure temp dir exists (it should, but just in case)
             if (!file_exists(dirname($outputPath))) {
-                mkdir(dirname($outputPath), 0755, true);
+                @mkdir(dirname($outputPath), 0755, true);
             }
 
             $newPdf->Output('F', $outputPath);
@@ -148,14 +174,21 @@ class CertificateController extends Controller
             // unlink($outputPath); 
         }
 
+        $msg = "Successfully processed and sent $sentCount certificates!";
+        if (!empty($skippedRecipients)) {
+            $msg .= " Skipped " . count($skippedRecipients) . " names (not found in PDF): " . implode(', ', array_slice($skippedRecipients, 0, 5));
+            if (count($skippedRecipients) > 5) $msg .= ", ...";
+        }
+
         if ($request->wantsJson()) {
             return response()->json([
                 'success' => true,
-                'message' => "Successfully processed and sent $sentCount certificates!",
-                'count' => $sentCount
+                'message' => $msg,
+                'count' => $sentCount,
+                'skipped' => $skippedRecipients
             ]);
         }
 
-        return back()->with('success', "Successfully processed and sent $sentCount certificates!");
+        return back()->with('success', $msg);
     }
 }
