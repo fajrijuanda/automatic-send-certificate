@@ -146,8 +146,15 @@ class CertificateController extends Controller
             // Extract Page
             $newPdf = new Fpdi();
             $newPdf->setSourceFile($pdfPath);
-            $newPdf->AddPage();
+            
+            // Import page first to get size
             $tplId = $newPdf->importPage($pageNo);
+            $size = $newPdf->getTemplateSize($tplId);
+            
+            // Determine orientation
+            $orientation = ($size['width'] > $size['height']) ? 'L' : 'P';
+            
+            $newPdf->AddPage($orientation, [$size['width'], $size['height']]);
             $newPdf->useTemplate($tplId);
 
             $outputName = 'cert_' . preg_replace('/[^a-z0-9]/i', '_', $recipient['name']) . '.pdf';
