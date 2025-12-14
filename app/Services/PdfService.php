@@ -2,70 +2,71 @@
 
 namespace App\Services;
 
-use Smalot\PdfParser\Parser;
+
 use Illuminate\Support\Facades\Log;
 
 class PdfService
 {
-    protected $parser;
-
     public function __construct()
     {
-        $this->parser = new Parser();
+        // No constructor logic needed for system command
     }
 
     /**
-     * Map names to page numbers in the PDF.
-     * returns an array: ['name1' => pageNum, 'name2' => pageNum]
-     * 
-     * @param string $pdfPath
-     * @param array $names List of names to search for.
-     * @return array
+     * Map names to page numbers in the PDF using pdftotext.
      */
     public function mapNamesToPages(string $pdfPath, array $names): array
     {
         try {
-            $pdf = $this->parser->parseFile($pdfPath);
-            $pages = $pdf->getPages();
             $mapping = [];
-            
-            // Normalize names for easier matching
             $normalizedNames = [];
+            
+            // Normalize names
             foreach ($names as $originalName) {
-                // Remove extra spaces, lowercase
                 $cleanName = strtolower(trim(preg_replace('/\s+/', ' ', $originalName)));
                 if (!empty($cleanName)) {
                     $normalizedNames[$originalName] = $cleanName;
                 }
             }
 
-            foreach ($pages as $pageNumber => $page) {
-                // Page numbers in Smalot are usually 0-indexed in the array, but let's verify.
-                // Actually $pdf->getPages() returns an array.
-                // We want 1-based page number for FPDI.
-                $actualPageNumber = $pageNumber + 1;
+            // Execute pdftotext to extract ALL text at once
+            // -layout maintains layout which is good for separation
+            // Outputting to stdout ('-')
+            // Encapsulate path in quotes
+            $cmd = 'pdftotext -layout "' . $pdfPath . '" -';
+            $fullText = shell_exec($cmd);
+
+            if ($fullText === null) {
+                Log::error("pdftotext failed to return output.");
+                return [];
+            }
+
+            // Split by Form Feed character (\f) which denotes page breaks
+            // Note: The first page is index 0.
+            $pages = explode("\f", $fullText);
+            
+            // Phase 2: Match Names
+            foreach ($pages as $index => $pageText) {
+                $actualPageNumber = $index + 1;
+                $cleanText = strtolower(trim(preg_replace('/\s+/', ' ', $pageText)));
                 
-                $text = $page->getText();
-                $cleanText = strtolower(trim(preg_replace('/\s+/', ' ', $text)));
-                
+                // Skip empty pages (often last page after \f is empty)
+                if (empty($cleanText)) continue;
+
                 foreach ($normalizedNames as $originalName => $searchName) {
                     if (str_contains($cleanText, $searchName)) {
-                        // Match found!
                         $mapping[$originalName] = $actualPageNumber;
-                        
-                        // Optimization 1: Do not search for this name again in next pages
                         unset($normalizedNames[$originalName]);
-                        
-                        // Optimization 2: Do not check other names for this page (One page = One Cert)
-                        break; 
                     }
                 }
+                
+                if (empty($normalizedNames)) break;
             }
 
             return $mapping;
 
         } catch (\Exception $e) {
-            Log::error("PDF Parsing Error: " . $e->getMessage());
+            Log::error("PDF Parsing Error (pdftotext): " . $e->getMessage());
             return [];
         }
     }
