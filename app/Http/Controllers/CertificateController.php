@@ -20,7 +20,7 @@ class CertificateController extends Controller
     public function send(Request $request, PdfService $pdfService)
     {
         ini_set('memory_limit', '-1');
-        set_time_limit(600); // 10 Minutes
+        set_time_limit(0); // Unlimited
 
         $request->validate([
             'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:102400', // 100MB
@@ -172,6 +172,13 @@ class CertificateController extends Controller
             // Send Email
             try {
                 Mail::to($recipient['email'])->send(new CertificateSent($recipient['name'], $outputPath));
+                
+                // 1. Log ke file (storage/logs/laravel.log)
+                \Log::info("SUCCESS_SENT: {$recipient['name']} ({$recipient['email']})");
+                
+                // 2. Tampilkan di Terminal (php artisan serve window)
+                error_log("SUCCESS_SENT: {$recipient['name']} ({$recipient['email']})");
+                
                 $sentCount++;
             } catch (\Exception $e) {
                 // Log error, continue?

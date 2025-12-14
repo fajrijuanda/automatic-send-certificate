@@ -50,11 +50,14 @@ class PdfService
                 
                 foreach ($normalizedNames as $originalName => $searchName) {
                     if (str_contains($cleanText, $searchName)) {
-                        // Found a match!
-                        // If multiple pages have the same name, this uses the last one found... 
-                        // Or we can check if it's already set. 
-                        // Let's assume one certificate per name for now.
+                        // Match found!
                         $mapping[$originalName] = $actualPageNumber;
+                        
+                        // Optimization 1: Do not search for this name again in next pages
+                        unset($normalizedNames[$originalName]);
+                        
+                        // Optimization 2: Do not check other names for this page (One page = One Cert)
+                        break; 
                     }
                 }
             }
