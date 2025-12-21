@@ -20,7 +20,7 @@ class PdfService
         try {
             $mapping = [];
             $normalizedNames = [];
-            
+
             // Normalize names
             foreach ($names as $originalName) {
                 $cleanName = strtolower(trim(preg_replace('/\s+/', ' ', $originalName)));
@@ -44,12 +44,14 @@ class PdfService
             // Split by Form Feed character (\f) which denotes page breaks
             // Note: The first page is index 0.
             $pages = explode("\f", $fullText);
-            
+            \Log::info("PdfService: Extracted " . count($pages) . " pages from PDF.");
+            error_log("PdfService: Extracted " . count($pages) . " pages from PDF.");
+
             // Phase 2: Match Names
             foreach ($pages as $index => $pageText) {
                 $actualPageNumber = $index + 1;
                 $cleanText = strtolower(trim(preg_replace('/\s+/', ' ', $pageText)));
-                
+
                 // Skip empty pages (often last page after \f is empty)
                 if (empty($cleanText)) continue;
 
@@ -59,7 +61,7 @@ class PdfService
                         unset($normalizedNames[$originalName]);
                     }
                 }
-                
+
                 if (empty($normalizedNames)) break;
             }
 

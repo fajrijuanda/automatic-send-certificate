@@ -33,11 +33,11 @@ class CertificateController extends Controller
         // Remove header if needed, or assume first row is data?
         // Let's assume the first row likely contains headers like 'name', 'email'.
         // To be safe, let's normalize headers to lowercase and look for 'email'.
-        
+
         $headers = array_map(function($h) {
             return strtolower(trim($h));
         }, $data[0]);
-        
+
         // Define possible column names
         $nameKeywords = ['name', 'nama', 'nama lengkap', 'full name', 'fullname', 'nama peserta'];
         $emailKeywords = ['email', 'e-mail', 'email address', 'alamat email'];
@@ -64,12 +64,12 @@ class CertificateController extends Controller
 
         // Fallback logic
         if ($emailIndex === false) {
-             // If headers are not found, assume usage of standard columns if appropriate, 
+             // If headers are not found, assume usage of standard columns if appropriate,
              // or likely the file has no headers.
              // Default: Name = 0, Email = 1
              $nameIndex = 0;
              $emailIndex = 1;
-             $startIndex = 0; 
+             $startIndex = 0;
         } else {
              $startIndex = 1; // Skip header
              // If name was not found but email was, default name to 0 if 0 != emailIndex?
@@ -83,14 +83,23 @@ class CertificateController extends Controller
         $recipients = [];
         for ($i = $startIndex; $i < count($data); $i++) {
             $row = $data[$i];
-            if (isset($row[$emailIndex]) && filter_var($row[$emailIndex], FILTER_VALIDATE_EMAIL)) {
+            $rawEmail = $row[$emailIndex] ?? null;
+
+            // Trim email to avoid hidden whitespace issues
+            $email = trim($rawEmail);
+
+            if ($email && filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 $recipients[] = [
                     'name' => $row[$nameIndex] ?? 'Recipient',
-                    'email' => $row[$emailIndex],
-                    'name' => $row[$nameIndex] ?? 'Recipient',
-                    'email' => $row[$emailIndex],
+                    'email' => $email,
                     // Page will be assigned later
                 ];
+            } else {
+                 // Log skipped email (Terminal & File)
+                 $skippedName = $row[$nameIndex] ?? 'Unknown';
+                 $reason = empty($email) ? 'Empty Email' : 'Invalid Email Format';
+                 \Log::warning("SKIPPED_EMAIL: $skippedName ($rawEmail) - $reason");
+                 error_log("SKIPPED_EMAIL: $skippedName ($rawEmail) - $reason");
             }
         }
 
@@ -104,7 +113,7 @@ class CertificateController extends Controller
 
         // 2. Process PDF
         $pdfPath = $request->file('pdf_file')->getPathname();
-        
+
         // 2a. Map Names to Pages using PdfService
         $names = array_column($recipients, 'name');
         $mapping = $pdfService->mapNamesToPages($pdfPath, $names);
@@ -119,11 +128,18 @@ class CertificateController extends Controller
                 $validRecipients[] = $recipient;
             } else {
                 $skippedRecipients[] = $name;
+                // Log skipped PDF match
+                \Log::warning("SKIPPED_PDF_MISMATCH: $name (Not found in PDF pages)");
+                error_log("SKIPPED_PDF_MISMATCH: $name (Not found in PDF pages)");
             }
         }
-        
+
         if (empty($validRecipients)) {
              $message = "No matching names found in PDF! Skipped: " . implode(', ', $skippedRecipients);
+
+             // Ensure this is visible in terminal too
+             error_log("ERROR: $message");
+
              if ($request->wantsJson()) {
                  return response()->json(['success' => false, 'message' => $message], 422);
              }
@@ -131,8 +147,7 @@ class CertificateController extends Controller
         }
 
         // Optional: Check if page count is sufficient, though mapping ensures we have valid pages.
-        // We can skip the strict count check since we are not sequentially assigning anymore. 
-        // But we might want to warn if PDF has FEWER pages than unique matched recipients? 
+        // We can skip the strict count check since we are not sequentially assigning anymore.
         // Logic handled by mapping.
 
         $recipients = $validRecipients;
@@ -142,18 +157,18 @@ class CertificateController extends Controller
 
         foreach ($recipients as $recipient) {
             $pageNo = $recipient['page'];
-            
+
             // Extract Page
             $newPdf = new Fpdi();
             $newPdf->setSourceFile($pdfPath);
-            
+
             // Import page first to get size
             $tplId = $newPdf->importPage($pageNo);
             $size = $newPdf->getTemplateSize($tplId);
-            
+
             // Determine orientation
             $orientation = ($size['width'] > $size['height']) ? 'L' : 'P';
-            
+
             $newPdf->AddPage($orientation, [$size['width'], $size['height']]);
             $newPdf->useTemplate($tplId);
 
@@ -161,7 +176,7 @@ class CertificateController extends Controller
             // Use system temp dir to avoid permission issues on shared hosting
             $tempDir = sys_get_temp_dir();
             $outputPath = $tempDir . DIRECTORY_SEPARATOR . $outputName;
-            
+
             // Ensure temp dir exists (it should, but just in case)
             if (!file_exists(dirname($outputPath))) {
                 @mkdir(dirname($outputPath), 0755, true);
@@ -172,13 +187,13 @@ class CertificateController extends Controller
             // Send Email
             try {
                 Mail::to($recipient['email'])->send(new CertificateSent($recipient['name'], $outputPath));
-                
+
                 // 1. Log ke file (storage/logs/laravel.log)
                 \Log::info("SUCCESS_SENT: {$recipient['name']} ({$recipient['email']})");
-                
+
                 // 2. Tampilkan di Terminal (php artisan serve window)
                 error_log("SUCCESS_SENT: {$recipient['name']} ({$recipient['email']})");
-                
+
                 $sentCount++;
             } catch (\Exception $e) {
                 // Log error, continue?
@@ -188,7 +203,7 @@ class CertificateController extends Controller
             // Cleanup temp file? Maybe keep for a bit or delete after send.
             // For now, let's not delete immediately so we can debug if needed, or use 'later' queue.
             // Since we are sync, we can delete.
-            // unlink($outputPath); 
+            // unlink($outputPath);
         }
 
         $msg = "Successfully processed and sent $sentCount certificates!";
